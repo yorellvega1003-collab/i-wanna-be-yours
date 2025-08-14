@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>I Wanna Be Yours — fragmento (autoplay + desmute seguro)</title>
+<style>
+  html, body { height: 100%; }
+  body{
+    margin:0;
+    background: radial-gradient(1200px 800px at 50% 30%, #3c2348 0%, #2a1833 50%, #1b1024 100%);
+    overflow:hidden; font-family: ui-serif, Georgia, "Times New Roman", serif; color:#fff;
+  }
+  .particle{ position:absolute; top:-5vh; border-radius:50%; background:#e14;
+    box-shadow:0 0 10px rgba(255,70,90,.65); opacity:.85;
+    animation: fall linear infinite, drift ease-in-out infinite; }
+  @keyframes fall{ to{ transform: translateY(110vh); } }
+  @keyframes drift{ 0%{margin-left:-6px} 50%{margin-left:6px} 100%{margin-left:-6px} }
+
+  .ui{ position:fixed; inset:0 0 auto 0; display:flex; gap:.75rem; align-items:center;
+    padding:.75rem .9rem; background:linear-gradient(180deg, rgba(0,0,0,.45), rgba(0,0,0,0)); z-index:20; }
+
+  .lyrics-wrap{ position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); z-index:15; max-width:min(800px, 88vw) }
+  .lyrics-box{
+    padding:22px 28px; background: rgba(255,255,255,.92); color:#7a1d1d; border-radius:24px;
+    box-shadow:0 10px 30px rgba(0,0,0,.35), 0 0 0 1px rgba(255,255,255,.25) inset;
+    font-size:clamp(18px,3.5vw,28px); line-height:1.35; text-align:center; white-space:pre-line; backdrop-filter: blur(2px);
+    min-width:280px;
+  }
+  .caret::after{ content:""; display:inline-block; width:1ch; height:1em; vertical-align:-0.2em;
+    border-left:2px solid #7a1d1d; margin-left:2px; animation: blink 1s steps(1) infinite; }
+  @keyframes blink{ 50%{opacity:0} }
+
+  /* Aviso muy discreto para activar sonido */
+  .toast{
+    position:fixed; top:10px; left:50%; transform:translateX(-50%);
+    background:rgba(255,255,255,.95); color:#4a164a; font-weight:700;
+    padding:.5rem .9rem; border-radius:12px; box-shadow:0 8px 24px rgba(0,0,0,.25);
+    z-index:40;
+  }
+  .hidden{ display:none; }
+
+  /* Controles nativos del audio visibles y pequeños */
+  .player{
+    position:fixed; right:10px; bottom:10px; z-index:50;
+    background:rgba(0,0,0,.35); padding:.35rem .5rem; border-radius:10px;
+  }
+  .player audio{ width:220px; height:28px }
+</style>
+</head>
+<body>
+
+<div class="ui"><strong>Arctic Monkeys — I Wanna Be Yours</strong></div>
+
+<div class="lyrics-wrap"><div id="lyricsBox" class="lyrics-box caret"></div></div>
+
+<!-- Audio: autoplay muted (permitido), con controles nativos visibles -->
+<div class="player">
+  <audio id="bgm" src="arctic.mp3" preload="auto" playsinline controls muted></audio>
+</div>
+
+<!-- Aviso si hay que tocar para activar sonido -->
+<div id="toast" class="toast hidden">Toca/clic/tecla para activar el sonido</div>
+
+<script>
+/* ===== Partículas ===== */
+const PARTICLES=24;
+for(let i=0;i<PARTICLES;i++){
+  const p=document.createElement('div'); p.className='particle';
+  p.style.left=`${Math.random()*100}vw`;
+  const s=6+Math.random()*6; p.style.width=`${s}px`; p.style.height=`${s}px`;
+  p.style.animationDuration=`${6+Math.random()*6}s, ${2+Math.random()*3}s`;
+  p.style.animationDelay=`${Math.random()*6}s, ${Math.random()*2}s`;
+  document.body.appendChild(p);
+}
+
+/* ===== CONFIGURA EL TRAMO =====
+   Si tu mp3 ya está recortado, deja START=0 y END='auto'. */
+const FRAG_START = 0;
+const FRAG_END   = 'auto';
+
+/* ===== Marcas por línea (relativas a FRAG_START). Ajusta si hace falta ===== */
+const SEG = [
+  { text: "Secrets I have held in my heart",           t0: 0.00, t1: 2.60 },
+  { text: "Are harder to hide than I thought",         t0: 3.00, t1: 5.80 },
+  { text: "Maybe I just wanna be yours",               t0: 6.20, t1: 9.00 },
+  { text: "I wanna be yours, I wanna be yours",        t0: 9.50, t1: 12.90 },
+  { text: "Wanna be yours",                            t0: 13.30, t1: 14.90 },
+  { text: "Wanna be yours",                            t0: 15.60, t1: 17.20 },
+  { text: "Wanna be yours",                            t0: 17.80, t1: 19.20 }
+];
+
+const audio = document.getElementById('bgm');
+const toast = document.getElementById('toast');
+const box   = document.getElementById('lyricsBox');
+
+let rafId=null, finished=false, useAudioClock=false, startEpoch=0, fragEndAbs=0;
+
+/* Utilidades */
+function nowRel(){
+  if (useAudioClock && !audio.paused && isFinite(audio.currentTime)) return audio.currentTime - FRAG_START;
+  return (performance.now() - startEpoch)/1000;
+}
+function segIndexAt(tRel){ for(let i=SEG.length-1;i>=0;i--) if(tRel>=SEG[i].t0) return i; return 0; }
+
+function render(){
+  if (finished) return cancelAnimationFrame(rafId);
+
+  const tRel = Math.max(0, nowRel());
+  if (tRel >= (fragEndAbs - FRAG_START) - 0.01){
+    box.textContent = SEG.at(-1).text;
+    box.classList.remove('caret');
+    try{ audio.pause(); }catch(e){}
+    finished = true;
+    return cancelAnimationFrame(rafId);
+  }
+
+  const i = segIndexAt(tRel);
+  const seg = SEG[i];
+  const span = Math.max(0.12, seg.t1 - seg.t0);
+  const p = Math.max(0, Math.min(1, (tRel - seg.t0)/span));
+  const chars = Math.round(seg.text.length * p);
+  box.textContent = seg.text.slice(0, chars);
+
+  rafId = requestAnimationFrame(render);
+}
+
+/* ===== Arranque: autoplay (mute) + desmute con gesto ===== */
+async function boot(){
+  startEpoch = performance.now();
+
+  // Esperar metadata para conocer duración
+  await new Promise(res=>{
+    if (isFinite(audio.duration) && audio.duration>0) return res();
+    const on=()=>{ audio.removeEventListener('loadedmetadata', on); res(); };
+    audio.addEventListener('loadedmetadata', on);
+    setTimeout(res, 1200);
+  });
+
+  const total = (isFinite(audio.duration) && audio.duration>0) ? audio.duration : 20;
+  fragEndAbs = (FRAG_END==='auto') ? total : Math.min(total, FRAG_END);
+
+  // Buscar el inicio del fragmento y tratar de reproducir en mute
+  try{
+    audio.currentTime = FRAG_START;
+  }catch(e){}
+
+  // Autoplay permitido si está muted
+  try{
+    await audio.play();
+    useAudioClock = true;        // usamos reloj del audio
+    toast.classList.add('hidden');
+  }catch{
+    // Si ni en mute arranca, el archivo no cargó. Pero normalmente sí arranca silenciado.
+  }
+
+  // En cuanto el usuario haga gesto → desmutear, subir volumen y asegurar play
+  async function enableSound(){
+    audio.muted = false;
+    audio.volume = Math.max(audio.volume, 1.0);
+    try{
+      if (audio.paused) await audio.play();
+      useAudioClock = true;
+      toast.classList.add('hidden');
+    }catch{}
+  }
+  document.addEventListener('click', enableSound);
+  document.addEventListener('keydown', enableSound);
+  document.addEventListener('pointerdown', enableSound);
+  document.addEventListener('touchstart', enableSound);
+  audio.addEventListener('playing', ()=>{ useAudioClock = true; toast.classList.add('hidden'); });
+
+  // Mostrar aviso si sigue muted
+  setTimeout(()=>{ if (audio.muted || audio.volume === 0) toast.classList.remove('hidden'); }, 400);
+
+  // Iniciar render del tipeo
+  box.textContent = "";
+  box.classList.add('caret');
+  rafId = requestAnimationFrame(render);
+}
+
+window.addEventListener('load', boot);
+</script>
+</body>
+</html>
